@@ -19,11 +19,17 @@ import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
+import com.google.android.gms.maps.model.MarkerOptions;
 
 
 public class MainActivity extends ActionBarActivity implements GoogleApiClient.ConnectionCallbacks,
-        GoogleApiClient.OnConnectionFailedListener,
-        LocationListener {
+        GoogleApiClient.OnConnectionFailedListener, LocationListener, OnMapReadyCallback{
 
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CODE = 4832;
@@ -32,13 +38,18 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private TextView locationText;
     private static final int INTERVAL = 1000;
     private static final int FAST_INTERVAL = INTERVAL/2;
+    private boolean updateOn;
+    private GoogleMap map;
+    private Marker marker;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        updateOn = false;
         mClient = buildGoogleApiClient();
         locationText = (TextView) findViewById(R.id.location);
+
     }
 
     @Override
@@ -50,6 +61,8 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
 
     @Override
     protected void onStop() {
+        if(updateOn)
+            stopLocationUpdates();
         mClient.disconnect();
         super.onStop();
     }
@@ -105,22 +118,26 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if(requestCode == REQUEST_CODE && resultCode == RESULT_OK){
-            //get contact from data and send text. TODO change this to a Cursor Loader.
-            Cursor cursor = getContentResolver()
-                    .query(data.getData(), new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null);
-            cursor.moveToFirst();
+            //get contact from data and send text.
+            if(data != null) {
+                Cursor cursor = getContentResolver()
+                .query(data.getData(), new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null);
+                cursor.moveToFirst();
 
-            // Retrieve the phone number from the NUMBER column
-            int column = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-            String number = cursor.getString(column);
-            sendTextMessage(number);
+                // Retrieve the phone number from the NUMBER column
+                int column = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                String number = cursor.getString(column);
+                sendTextMessage(number);
+                cursor.close();
+            }else
+                Toast.makeText(this, "Error: Could not retrieve contact", Toast.LENGTH_SHORT).show();
         }
     }
 
     private String messageText(){
-        if(this.location != null)
+        if(location != null)
             //TODO: Location should be the string address not lat and lng.
-            return  "My Location: "+this.location.getLatitude()+", "+this.location.getLongitude()+"\n" +
+            return  "My Location: "+location.toString()+"\n" +
                     "Map: http://maps.google.com/?q="+this.location.getLatitude()+","+this.location.getLongitude();
         return  "My Location: Unavalible";
     }
@@ -128,13 +145,12 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private void sendTextMessage(String number){
         try {
             SmsManager smsManager = SmsManager.getDefault();
-            smsManager.sendTextMessage(number, null, messageText(), null, null); //may want a pending intent to check if actually sent.
+            smsManager.sendTextMessage(number, null, messageText(), null, null);
             Toast.makeText(this, "Message sent", Toast.LENGTH_SHORT).show();
         }catch(IllegalArgumentException e){
             Log.d(TAG, e.getMessage());
             Toast.makeText(this, "Error: Message not sent", Toast.LENGTH_SHORT).show();
         }
-
     }
 
     /** Set up google play services **/
@@ -151,10 +167,14 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     @Override
     public void onConnected(Bundle bundle) {
         Log.i(TAG, "Connected!");
-        location =  LocationServices.FusedLocationApi.getLastLocation(mClient);
-        if(location != null)
+        location = LocationServices.FusedLocationApi.getLastLocation(mClient);
+        if (location != null){
             displayLocation();
-        setButtons();
+            setButtons();
+            MapFragment mapFragment = (MapFragment) getFragmentManager()
+                    .findFragmentById(R.id.map);
+            mapFragment.getMapAsync(this);
+        }
     }
 
     @Override
@@ -181,11 +201,13 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     protected void startLocationUpdates() {
         LocationServices.FusedLocationApi.requestLocationUpdates(
                 mClient, createLocationRequest(), this);
+        updateOn = true;
     }
 
     protected void stopLocationUpdates() {
         LocationServices.FusedLocationApi.removeLocationUpdates(
                 mClient, this);
+        updateOn = false;
     }
 
     @Override
@@ -193,14 +215,51 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         Log.i(TAG, "Location updating");
         this.location = location;
         stopLocationUpdates();
+        if(map != null){
+            updateCamera();
+            marker = setNewMarker();
+        }
         displayLocation();
     }
 
     private void displayLocation(){
-        //Todo: display this differnetly (either a map or at least the string human address.
-        locationText.setText("Location: "+this.location.getLatitude()+", "+this.location.getLongitude());
+        //Todo: Should also be the human readable street address.
+        locationText.setText("Location: "+location.getLatitude()+", "+location.getLongitude());
     }
 
+    private Marker setNewMarker(){
+        map.clear();
+        return map.addMarker(new MarkerOptions()
+                .position(new LatLng(location.getLatitude(), location.getLongitude()))
+                .draggable(true)
+                .title("Your Location"));
+    }
 
+    private void updateCamera(){
+        map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 17));
+    }
 
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        Log.i(TAG, "new map being made");
+        map = googleMap;
+        googleMap.setIndoorEnabled(false);
+        if(location != null) {
+            updateCamera();
+            if(marker == null) {
+                marker = setNewMarker();
+                map.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+                    @Override
+                    public void onMapClick(LatLng latLng) {
+                        Location newLocation = new Location("newMarker");
+                        newLocation.setLatitude(latLng.latitude);
+                        newLocation.setLongitude(latLng.longitude);
+                        location = newLocation;
+                        setNewMarker();
+                        displayLocation();
+                    }
+                });
+            }
+        }
+    }
 }
