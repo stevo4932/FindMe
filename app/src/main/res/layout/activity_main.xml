@@ -32,7 +32,8 @@
             android:layout_height="300dp"
             android:layout_gravity="center"
             android:layout_marginTop="50dp"
-            class="com.google.android.gms.maps.MapFragment"/>
+            class="com.google.android.gms.maps.MapFragment"
+            tools:layout="@layout/abc_action_bar_up_container" />
 
         <TextView
             android:id="@+id/location"

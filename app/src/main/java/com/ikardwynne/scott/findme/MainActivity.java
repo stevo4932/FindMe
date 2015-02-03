@@ -28,6 +28,10 @@ import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
 
+//TODO: need reverse geocoding
+//TODO: need settings menu
+//TODO: Change layout for landscape view.
+
 public class MainActivity extends ActionBarActivity implements GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener, LocationListener, OnMapReadyCallback{
 
@@ -46,6 +50,12 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        //restore the values.
+        if(savedInstanceState != null) {
+            location = new Location("newLocation");
+            location.setLongitude(savedInstanceState.getDouble("lng"));
+            location.setLatitude(savedInstanceState.getDouble("lat"));
+        }
         updateOn = false;
         mClient = buildGoogleApiClient();
         locationText = (TextView) findViewById(R.id.location);
@@ -53,6 +63,14 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putDouble("lat", location.getLatitude());
+        outState.putDouble("lng", location.getLongitude());
+    }
+
+    @Override
+    //Might need to change this to on resume.
     protected void onStart() {
         super.onStart();
         if(!(mClient.isConnected() || mClient.isConnecting()))
@@ -167,7 +185,8 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     @Override
     public void onConnected(Bundle bundle) {
         Log.i(TAG, "Connected!");
-        location = LocationServices.FusedLocationApi.getLastLocation(mClient);
+        if(location == null)
+            location = LocationServices.FusedLocationApi.getLastLocation(mClient);
         if (location != null){
             displayLocation();
             setButtons();
