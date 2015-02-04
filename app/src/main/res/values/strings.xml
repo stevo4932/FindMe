@@ -6,6 +6,11 @@
     <string name="action_settings">Settings</string>
     <string name="sendbutton">Send</string>
     <string name="updatebutton">Update</string>
-    <string name="instructions">Press button to send your location</string>
-
+    <string name="instructions">Enter a phone number \nor select one from your contacts</string>
+    <string name="service_not_available">Service is not available</string>
+    <string name="invalid_lat_long_used">Invalid Latitude and Longitude</string>
+    <string name="no_address_found">No address found</string>
+    <string name="address_found">Address found</string>
+    <string name="find_contact">Lookup Contact</string>
+    <string name="enter_number">Phone Number</string>
 </resources>

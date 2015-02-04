@@ -5,12 +5,15 @@ import android.database.Cursor;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.ResultReceiver;
 import android.provider.ContactsContract;
 import android.support.v7.app.ActionBarActivity;
 import android.telephony.SmsManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,8 +30,9 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-//TODO: need reverse geocoding
 //TODO: need settings menu
 //TODO: Change layout for landscape view.
 
@@ -40,16 +44,19 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private GoogleApiClient mClient;
     private Location location;
     private TextView locationText;
+    private AddressResultReceiver mResultReceiver;
     private static final int INTERVAL = 1000;
     private static final int FAST_INTERVAL = INTERVAL/2;
     private boolean updateOn;
     private GoogleMap map;
     private Marker marker;
+    private EditText phoneNumber;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        mResultReceiver = new AddressResultReceiver(new Handler());
         //restore the values.
         if(savedInstanceState != null) {
             location = new Location("newLocation");
@@ -59,14 +66,17 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         updateOn = false;
         mClient = buildGoogleApiClient();
         locationText = (TextView) findViewById(R.id.location);
+        phoneNumber = (EditText) findViewById(R.id.phone_number);
 
     }
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        outState.putDouble("lat", location.getLatitude());
-        outState.putDouble("lng", location.getLongitude());
+        if(location != null) {
+            outState.putDouble("la t", location.getLatitude());
+            outState.putDouble("lng", location.getLongitude());
+        }
     }
 
     @Override
@@ -111,11 +121,16 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private void setButtons(){
         Button send = (Button) findViewById(R.id.send_button);
         Button update = (Button) findViewById(R.id.update_button);
+        Button contacts = (Button) findViewById(R.id.contact_button);
 
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                getContact();
+                String number = phoneNumber.getText().toString();
+                if(number != null && !number.isEmpty())
+                    sendTextMessage(number);
+                else
+                    Toast.makeText(MainActivity.this, "Error: No phone number", Toast.LENGTH_SHORT).show();
             }
         });
 
@@ -123,6 +138,13 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
             @Override
             public void onClick(View v) {
                 startLocationUpdates();
+            }
+        });
+
+        contacts.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                getContact();
             }
         });
     }
@@ -140,12 +162,18 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
             if(data != null) {
                 Cursor cursor = getContentResolver()
                 .query(data.getData(), new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null);
-                cursor.moveToFirst();
+                if(cursor.getCount() > 0) {
+                    cursor.moveToFirst();
 
-                // Retrieve the phone number from the NUMBER column
-                int column = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-                String number = cursor.getString(column);
-                sendTextMessage(number);
+                    // Retrieve the phone number from the NUMBER column
+                    int column = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                    String number = cursor.getString(column);
+                    phoneNumber.setText(number);
+                }else{
+                    Toast.makeText(this, "Error: Could not load phone number", Toast.LENGTH_SHORT).show();
+                    Log.d(TAG, "Cursor is not greater than 0");
+                }
+                //sendTextMessage(number);
                 cursor.close();
             }else
                 Toast.makeText(this, "Error: Could not retrieve contact", Toast.LENGTH_SHORT).show();
@@ -154,21 +182,35 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
 
     private String messageText(){
         if(location != null)
-            //TODO: Location should be the string address not lat and lng.
-            return  "My Location: "+location.toString()+"\n" +
-                    "Map: http://maps.google.com/?q="+this.location.getLatitude()+","+this.location.getLongitude();
+            return  locationText.getText().toString()+"\n" +
+                    "\nMap: http://maps.google.com/?q="+this.location.getLatitude()+","+this.location.getLongitude();
         return  "My Location: Unavalible";
     }
 
+    private boolean isPhoneNumber(String number){
+        Pattern pattern1 = Pattern.compile("\\(\\d{3}\\) \\d{3}-\\d{4}");
+        Pattern pattern2 = Pattern.compile("\\d{10}");
+        Matcher matcher1 = pattern1.matcher(number);
+        Matcher matcher2 = pattern2.matcher(number);
+
+        if (matcher1.matches() || matcher2.matches())
+           return true;
+        return false;
+    }
+
     private void sendTextMessage(String number){
-        try {
-            SmsManager smsManager = SmsManager.getDefault();
-            smsManager.sendTextMessage(number, null, messageText(), null, null);
-            Toast.makeText(this, "Message sent", Toast.LENGTH_SHORT).show();
-        }catch(IllegalArgumentException e){
-            Log.d(TAG, e.getMessage());
-            Toast.makeText(this, "Error: Message not sent", Toast.LENGTH_SHORT).show();
-        }
+        if(isPhoneNumber(number)) {
+            try {
+                SmsManager smsManager = SmsManager.getDefault();
+                //TODO: should use the pending intents to see if message was actually sent.
+                smsManager.sendTextMessage(number, null, messageText(), null, null);
+                Toast.makeText(this, "Message sent", Toast.LENGTH_SHORT).show();
+            } catch (IllegalArgumentException e) {
+                Log.d(TAG, e.getMessage());
+                Toast.makeText(this, "Error: Message not sent", Toast.LENGTH_SHORT).show();
+            }
+        }else
+            Toast.makeText(this, "Error: phone number is not valid", Toast.LENGTH_SHORT).show();
     }
 
     /** Set up google play services **/
@@ -188,7 +230,7 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         if(location == null)
             location = LocationServices.FusedLocationApi.getLastLocation(mClient);
         if (location != null){
-            displayLocation();
+            startIntentService();
             setButtons();
             MapFragment mapFragment = (MapFragment) getFragmentManager()
                     .findFragmentById(R.id.map);
@@ -238,12 +280,21 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
             updateCamera();
             marker = setNewMarker();
         }
-        displayLocation();
+        startIntentService();
     }
 
-    private void displayLocation(){
-        //Todo: Should also be the human readable street address.
-        locationText.setText("Location: "+location.getLatitude()+", "+location.getLongitude());
+    private void displayLocation(String address){
+        if(address != null)
+            locationText.setText("Your Location:\n"+address);
+        else
+            locationText.setText("Your Location: \n"+location.getLatitude()+", "+location.getLongitude());
+    }
+
+    protected void startIntentService() {
+        Intent intent = new Intent(this, FetchAddressIntentService.class);
+        intent.putExtra(FetchAddressIntentService.Constants.RECEIVER, mResultReceiver);
+        intent.putExtra(FetchAddressIntentService.Constants.LOCATION_DATA_EXTRA, location);
+        startService(intent);
     }
 
     private Marker setNewMarker(){
@@ -275,10 +326,30 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
                         newLocation.setLongitude(latLng.longitude);
                         location = newLocation;
                         setNewMarker();
-                        displayLocation();
+                        startIntentService();
+
                     }
                 });
             }
+        }
+    }
+
+    class AddressResultReceiver extends ResultReceiver {
+
+        public AddressResultReceiver(Handler handler) {
+            super(handler);
+        }
+
+        @Override
+        protected void onReceiveResult(int resultCode, Bundle resultData) {
+            String mAddress = resultData.getString(FetchAddressIntentService.Constants.RESULT_DATA_KEY);
+            if(resultCode == FetchAddressIntentService.Constants.SUCCESS_RESULT)
+                displayLocation(mAddress);
+            else {
+                displayLocation(null);
+                Toast.makeText(MainActivity.this, mAddress, Toast.LENGTH_SHORT).show();
+            }
+
         }
     }
 }

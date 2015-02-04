@@ -23,15 +23,32 @@
             android:gravity="center"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="50dp"
+            android:layout_marginTop="30dp"
             android:layout_gravity="center"/>
+
+        <EditText
+            android:id="@+id/phone_number"
+            android:layout_width="300dp"
+            android:layout_height="50dp"
+            android:hint="@string/enter_number"
+            android:layout_gravity="center"
+            android:layout_marginTop="20dp"
+            android:inputType="phone"/>
+
+        <Button
+            android:id="@+id/contact_button"
+            android:layout_width="300dp"
+            android:layout_height="50dp"
+            android:text="@string/find_contact"
+            android:layout_gravity="center"
+            android:layout_marginTop="5dp"/>
 
         <fragment
             android:id="@+id/map"
             android:layout_width="300dp"
             android:layout_height="300dp"
             android:layout_gravity="center"
-            android:layout_marginTop="50dp"
+            android:layout_marginTop="30dp"
             class="com.google.android.gms.maps.MapFragment"
             tools:layout="@layout/abc_action_bar_up_container" />
 
@@ -40,7 +57,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:layout_gravity="center" />
+            android:layout_gravity="center"
+            android:gravity="center"/>
 
         <RelativeLayout
             android:layout_width="match_parent"
