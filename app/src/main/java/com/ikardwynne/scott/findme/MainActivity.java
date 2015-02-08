@@ -1,6 +1,10 @@
 package com.ikardwynne.scott.findme;
 
+import android.app.Dialog;
+import android.app.DialogFragment;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.graphics.Point;
 import android.location.Location;
 import android.net.Uri;
@@ -17,6 +21,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesUtil;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
@@ -29,8 +34,9 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
+import static com.google.android.gms.common.GooglePlayServicesUtil.isGooglePlayServicesAvailable;
+
 //TODO: need settings menu
-//TODO: Change layout for landscape view.
 
 public class MainActivity extends ActionBarActivity implements GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener, LocationListener, OnMapReadyCallback{
@@ -45,12 +51,27 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private boolean updateOn;
     private GoogleMap map;
     private Marker marker;
+    private static final int REQUEST_RESOLVE_ERROR = 1001;
+    // Unique tag for the error dialog fragment
+    private static final String DIALOG_ERROR = "dialog_error";
+    // Bool to track whether the app is already resolving an error
+    private boolean mResolvingError = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        //check to make sure user has google play services avalible,
+        // then connect the api client.
+        int code = isGooglePlayServicesAvailable (this);
+        if(code != ConnectionResult.SUCCESS)
+            showErrorDialog(code);
+        mClient = buildGoogleApiClient();
+
+        //Used for reverse geocoding service.
         mResultReceiver = new AddressResultReceiver(new Handler());
+
         //restore the values.
         if(savedInstanceState != null) {
             location = new Location("newLocation");
@@ -58,7 +79,6 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
             location.setLatitude(savedInstanceState.getDouble("lat"));
         }
         updateOn = false;
-        mClient = buildGoogleApiClient();
         locationText = (TextView) findViewById(R.id.location);
 
     }
@@ -72,19 +92,11 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         }
     }
 
-    private Point getDisplaySize(){
-        //get display size.
-        Display display = getWindowManager().getDefaultDisplay();
-        Point size = new Point();
-        display.getSize(size);
-        return size;
-    }
-
     @Override
     //Might need to change this to on resume.
     protected void onStart() {
         super.onStart();
-        if(!(mClient.isConnected() || mClient.isConnecting()))
+        if(mClient != null && !(mClient.isConnected() || mClient.isConnecting()))
             mClient.connect();
     }
 
@@ -92,7 +104,8 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     protected void onStop() {
         if(updateOn)
             stopLocationUpdates();
-        mClient.disconnect();
+        if(mClient != null)
+            mClient.disconnect();
         super.onStop();
     }
 
@@ -159,6 +172,14 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         }
     }
 
+    private Point getDisplaySize(){
+        //get display size.
+        Display display = getWindowManager().getDefaultDisplay();
+        Point size = new Point();
+        display.getSize(size);
+        return size;
+    }
+
     /** Set up google play services **/
 
     protected synchronized GoogleApiClient buildGoogleApiClient() {
@@ -199,11 +220,40 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     }
 
     @Override
-    public void onConnectionFailed(ConnectionResult connectionResult) {
-        //TODO: should be pretty robust.
+    public void onConnectionFailed(ConnectionResult result) {
         Log.d(TAG, "Connection failed");
+        if (mResolvingError) {
+            // Already attempting to resolve an error.
+            return;
+        } else if (result.hasResolution()) {
+            try {
+                mResolvingError = true;
+                result.startResolutionForResult(this, REQUEST_RESOLVE_ERROR);
+            } catch (IntentSender.SendIntentException e) {
+                // There was an error with the resolution intent. Try again.
+                mClient.connect();
+            }
+        } else {
+            // Show dialog using GooglePlayServicesUtil.getErrorDialog()
+            showErrorDialog(result.getErrorCode());
+            mResolvingError = true;
+        }
     }
 
+    private void showErrorDialog(int errorCode) {
+        // Create a fragment for the error dialog
+        ErrorDialogFragment dialogFragment = new ErrorDialogFragment();
+        // Pass the error that should be displayed
+        Bundle args = new Bundle();
+        args.putInt(DIALOG_ERROR, errorCode);
+        dialogFragment.setArguments(args);
+        dialogFragment.show(getFragmentManager(), "errordialog");
+    }
+
+    /* Called from ErrorDialogFragment when the dialog is dismissed. */
+    public void onDialogDismissed() {
+        mResolvingError = false;
+    }
     /**Start of Location update**/
 
     protected LocationRequest createLocationRequest() {
@@ -286,6 +336,23 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
                     }
                 });
             }
+        }
+    }
+
+    public static class ErrorDialogFragment extends DialogFragment {
+        public ErrorDialogFragment() { }
+
+        @Override
+        public Dialog onCreateDialog(Bundle savedInstanceState) {
+            // Get the error code and retrieve the appropriate dialog
+            int errorCode = this.getArguments().getInt(DIALOG_ERROR);
+            return GooglePlayServicesUtil.getErrorDialog(errorCode,
+                    this.getActivity(), REQUEST_RESOLVE_ERROR);
+        }
+
+        @Override
+        public void onDismiss(DialogInterface dialog) {
+            ((MainActivity)getActivity()).onDialogDismissed();
         }
     }
 
