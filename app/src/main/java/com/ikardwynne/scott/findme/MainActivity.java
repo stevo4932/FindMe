@@ -1,19 +1,18 @@
 package com.ikardwynne.scott.findme;
 
 import android.content.Intent;
-import android.database.Cursor;
+import android.graphics.Point;
 import android.location.Location;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.ResultReceiver;
-import android.provider.ContactsContract;
 import android.support.v7.app.ActionBarActivity;
-import android.telephony.SmsManager;
 import android.util.Log;
+import android.view.Display;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -30,9 +29,6 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 //TODO: need settings menu
 //TODO: Change layout for landscape view.
 
@@ -40,7 +36,6 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         GoogleApiClient.OnConnectionFailedListener, LocationListener, OnMapReadyCallback{
 
     private static final String TAG = "MainActivity";
-    private static final int REQUEST_CODE = 4832;
     private GoogleApiClient mClient;
     private Location location;
     private TextView locationText;
@@ -50,7 +45,6 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private boolean updateOn;
     private GoogleMap map;
     private Marker marker;
-    private EditText phoneNumber;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,7 +60,6 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
         updateOn = false;
         mClient = buildGoogleApiClient();
         locationText = (TextView) findViewById(R.id.location);
-        phoneNumber = (EditText) findViewById(R.id.phone_number);
 
     }
 
@@ -74,9 +67,17 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         if(location != null) {
-            outState.putDouble("la t", location.getLatitude());
+            outState.putDouble("lat", location.getLatitude());
             outState.putDouble("lng", location.getLongitude());
         }
+    }
+
+    private Point getDisplaySize(){
+        //get display size.
+        Display display = getWindowManager().getDefaultDisplay();
+        Point size = new Point();
+        display.getSize(size);
+        return size;
     }
 
     @Override
@@ -121,96 +122,41 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
     private void setButtons(){
         Button send = (Button) findViewById(R.id.send_button);
         Button update = (Button) findViewById(R.id.update_button);
-        Button contacts = (Button) findViewById(R.id.contact_button);
 
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String number = phoneNumber.getText().toString();
-                if(number != null && !number.isEmpty())
-                    sendTextMessage(number);
-                else
-                    Toast.makeText(MainActivity.this, "Error: No phone number", Toast.LENGTH_SHORT).show();
+            sendTextMessage();
             }
         });
-
         update.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 startLocationUpdates();
             }
         });
-
-        contacts.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                getContact();
-            }
-        });
-    }
-
-    private void getContact() {
-        Intent contact = new Intent(Intent.ACTION_PICK, Uri.parse("content://contacts"));
-        contact.setType(ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE);
-        startActivityForResult(contact, REQUEST_CODE);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if(requestCode == REQUEST_CODE && resultCode == RESULT_OK){
-            //get contact from data and send text.
-            if(data != null) {
-                Cursor cursor = getContentResolver()
-                .query(data.getData(), new String[]{ContactsContract.CommonDataKinds.Phone.NUMBER}, null, null, null);
-                if(cursor.getCount() > 0) {
-                    cursor.moveToFirst();
-
-                    // Retrieve the phone number from the NUMBER column
-                    int column = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
-                    String number = cursor.getString(column);
-                    phoneNumber.setText(number);
-                }else{
-                    Toast.makeText(this, "Error: Could not load phone number", Toast.LENGTH_SHORT).show();
-                    Log.d(TAG, "Cursor is not greater than 0");
-                }
-                //sendTextMessage(number);
-                cursor.close();
-            }else
-                Toast.makeText(this, "Error: Could not retrieve contact", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private String messageText(){
         if(location != null)
             return  locationText.getText().toString()+"\n" +
                     "\nMap: http://maps.google.com/?q="+this.location.getLatitude()+","+this.location.getLongitude();
-        return  "My Location: Unavalible";
+        return  "My Location: Unavailable";
     }
 
-    private boolean isPhoneNumber(String number){
-        Pattern pattern1 = Pattern.compile("\\(\\d{3}\\) \\d{3}-\\d{4}");
-        Pattern pattern2 = Pattern.compile("\\d{10}");
-        Matcher matcher1 = pattern1.matcher(number);
-        Matcher matcher2 = pattern2.matcher(number);
-
-        if (matcher1.matches() || matcher2.matches())
-           return true;
-        return false;
-    }
-
-    private void sendTextMessage(String number){
-        if(isPhoneNumber(number)) {
-            try {
-                SmsManager smsManager = SmsManager.getDefault();
-                //TODO: should use the pending intents to see if message was actually sent.
-                smsManager.sendTextMessage(number, null, messageText(), null, null);
-                Toast.makeText(this, "Message sent", Toast.LENGTH_SHORT).show();
-            } catch (IllegalArgumentException e) {
-                Log.d(TAG, e.getMessage());
-                Toast.makeText(this, "Error: Message not sent", Toast.LENGTH_SHORT).show();
-            }
-        }else
-            Toast.makeText(this, "Error: phone number is not valid", Toast.LENGTH_SHORT).show();
+    private void sendTextMessage(){
+        Intent smsIntent = new Intent(Intent.ACTION_VIEW);
+        smsIntent.setData(Uri.parse("smsto:"));
+        smsIntent.setType("vnd.android-dir/mms-sms");
+        smsIntent.putExtra("sms_body", messageText());
+        try {
+            startActivity(smsIntent);
+            //finish();
+            Log.i("Finished sending SMS...", "");
+        } catch (android.content.ActivityNotFoundException ex) {
+            Toast.makeText(MainActivity.this,
+                    "SMS failed, please try again later.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     /** Set up google play services **/
@@ -234,8 +180,17 @@ public class MainActivity extends ActionBarActivity implements GoogleApiClient.C
             setButtons();
             MapFragment mapFragment = (MapFragment) getFragmentManager()
                     .findFragmentById(R.id.map);
+            //set fragment size
+            Point size = getDisplaySize();
+            ViewGroup.LayoutParams params = mapFragment.getView().getLayoutParams();
+            int fragSize = size.x -80;
+            params.width = fragSize;
+            params.height = fragSize;
+            mapFragment.getView().setLayoutParams(params);
+            //start building map in background.
             mapFragment.getMapAsync(this);
-        }
+        }else
+            Toast.makeText(this, "Error: No Location Found", Toast.LENGTH_SHORT).show();
     }
 
     @Override
